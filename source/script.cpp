@@ -3720,6 +3720,52 @@ inline ResultType Script::IsDirective(LPTSTR aBuf)
 		return CONDITION_TRUE;
 	}
 
+	if (IS_DIRECTIVE_MATCH(_T("#Alias")))
+	{
+		// Defines an alternate name for an existing key, e.g. "#Alias MOUSE_THUMB::F15" makes
+		// MOUSE_THUMB usable anywhere a key name is accepted (hotkeys, Send, GetKeyState, etc.),
+		// resolving to the same VK/SC as F15.  This makes scripts easier to read and lets a shared
+		// script's key bindings be re-targeted by editing the aliases at the top of the file.
+		if (!parameter)
+			return ScriptError(ERR_PARAM1_REQUIRED, aBuf);
+		// Expected form: AliasName::TargetKey
+		LPTSTR double_colon = _tcsstr(parameter, _T("::"));
+		if (!double_colon)
+			return ScriptError(_T("#Alias requires the form Name::Key."), aBuf);
+		// Determine the alias name (the text before "::", with any surrounding whitespace removed).
+		LPTSTR name_end = double_colon;
+		while (name_end > parameter && IS_SPACE_OR_TAB(name_end[-1]))
+			--name_end;
+		size_t name_length = name_end - parameter;
+		LPTSTR target = omit_leading_whitespace(double_colon + 2);
+		if (!name_length || !*target)
+			return ScriptError(_T("#Alias requires the form Name::Key."), aBuf);
+		// The name must be a valid identifier so that it can be parsed like any other key name
+		// (e.g. as the prefix or suffix of a composite hotkey).
+		if (!IS_LEADING_IDENTIFIER_CHAR(*parameter))
+			return ScriptError(_T("Invalid #Alias name."), aBuf);
+		for (LPTSTR cp = parameter; cp < name_end; ++cp)
+			if (!IS_IDENTIFIER_CHAR(*cp))
+				return ScriptError(_T("Invalid #Alias name."), aBuf);
+		TCHAR alias_name[64];
+		if (name_length >= _countof(alias_name))
+			return ScriptError(_T("#Alias name is too long."), aBuf);
+		tcslcpy(alias_name, parameter, name_length + 1);
+		// Reject names that already resolve to a key, so an alias can never shadow a real key name.
+		vk_type vk;
+		sc_type sc;
+		if (TextToVKandSC(alias_name, vk, sc))
+			return ScriptError(_T("#Alias name is already a key name."), alias_name);
+		if (FindKeyAlias(alias_name))
+			return ScriptError(_T("Duplicate #Alias name."), alias_name);
+		// Resolve the target to the same VK/SC the real key would use.
+		modLR_type modifiersLR = 0;
+		if (!TextToVKandSC(target, vk, sc, &modifiersLR))
+			return ScriptError(ERR_INVALID_KEYNAME, target);
+		AddKeyAlias(alias_name, vk, sc, modifiersLR);
+		return CONDITION_TRUE;
+	}
+
 	// L4: Handle #HotIf (expression) directive.
 	if (IS_DIRECTIVE_MATCH(_T("#HotIf")))
 	{

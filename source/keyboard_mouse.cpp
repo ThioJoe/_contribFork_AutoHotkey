@@ -4011,9 +4011,42 @@ TCHAR VKtoChar(vk_type aVK, HKL aKeybdLayout)
 
 
 
+// User-defined key aliases (see the #Alias directive).  They are defined at load time and
+// persist for the life of the program, so the nodes are allocated from SimpleHeap (never freed).
+// sKeyAliases is NULL whenever no aliases are defined, which keeps the common case essentially free.
+static key_alias_type *sKeyAliases = NULL;
+
+key_alias_type *FindKeyAlias(LPCTSTR aName)
+{
+	for (key_alias_type *alias = sKeyAliases; alias; alias = alias->next)
+		if (!_tcsicmp(alias->name, aName))
+			return alias;
+	return NULL;
+}
+
+void AddKeyAlias(LPCTSTR aName, vk_type aVK, sc_type aSC, modLR_type aModifiersLR)
+{
+	// The caller (the #Alias directive handler) is responsible for validating aName and resolving
+	// the target key; here we just store the mapping.  SimpleHeap::Alloc terminates on failure.
+	key_alias_type *alias = SimpleHeap::Alloc<key_alias_type>();
+	alias->name = SimpleHeap::Alloc(aName);
+	alias->vk = aVK;
+	alias->sc = aSC;
+	alias->modifiersLR = aModifiersLR;
+	alias->next = sKeyAliases;
+	sKeyAliases = alias;
+}
+
+
+
 sc_type TextToSC(LPCTSTR aText, bool *aSpecifiedByNumber)
 {
 	if (!*aText) return 0;
+	// Check user-defined aliases first (see the #Alias directive).  An alias name is validated at
+	// definition time so that it never collides with a real key name, so checking it first is safe.
+	if (sKeyAliases)
+		if (key_alias_type *alias = FindKeyAlias(aText))
+			return alias->sc; // Non-zero only when the target key is handled by scan code.
 	for (int i = 0; i < g_key_to_sc_count; ++i)
 		if (!_tcsicmp(g_key_to_sc[i].key_name, aText))
 			return g_key_to_sc[i].sc;
@@ -4045,6 +4078,25 @@ vk_type TextToVK(LPCTSTR aText, modLR_type *pModifiersLR, bool aExcludeThoseHand
 	// Don't trim() aText or modify it because that will mess up the caller who expects it to be unchanged.
 	// Instead, for now, just check it as-is.  The only extra whitespace that should exist, due to trimming
 	// of text during load, is that on either side of the COMPOSITE_DELIMITER (e.g. " then ").
+
+	// Check user-defined aliases first (see the #Alias directive).  An alias name is validated at
+	// definition time so that it never collides with a real key name, so checking it first is safe.
+	// Resolution mirrors how a real key name would be handled: aliases whose target is a VK return
+	// that VK (plus any required modifiers), while aliases whose target is handled by scan code obey
+	// aExcludeThoseHandledByScanCode just like the g_key_to_sc keys do below.
+	if (sKeyAliases)
+		if (key_alias_type *alias = FindKeyAlias(aText))
+		{
+			if (alias->vk)
+			{
+				if (pModifiersLR)
+					*pModifiersLR |= alias->modifiersLR;
+				return alias->vk;
+			}
+			if (aExcludeThoseHandledByScanCode)
+				return 0;
+			return alias->sc ? sc_to_vk(alias->sc) : 0;
+		}
 
 	if (!aText[1]) // _tcslen(aText) == 1
 		return CharToVKAndModifiers(*aText, pModifiersLR, aKeybdLayout); // Making this a function simplifies things because it can do early return, etc.

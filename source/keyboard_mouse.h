@@ -207,6 +207,15 @@ struct key_to_sc_type // Map key names to scan codes.
 	sc_type sc;
 };
 
+struct key_alias_type // Maps a user-defined alias name to an existing key (see the #Alias directive).
+{
+	LPTSTR name;
+	vk_type vk;            // Non-zero if the target key is handled by virtual key.
+	sc_type sc;            // Non-zero if the target key is handled by scan code.
+	modLR_type modifiersLR; // Any modifiers required to realize the target key.
+	key_alias_type *next;
+};
+
 enum KeyStateTypes {KEYSTATE_LOGICAL, KEYSTATE_PHYSICAL, KEYSTATE_TOGGLE}; // For use with GetKeyJoyState(), etc.
 enum KeyEventTypes {KEYDOWN, KEYUP, KEYDOWNANDUP};
 
@@ -353,6 +362,8 @@ vk_type TextToVK(LPCTSTR aText, modLR_type *pModifiersLR = NULL, bool aExcludeTh
 	, bool aAllowExplicitVK = true, HKL aKeybdLayout = GetKeyboardLayout(0));
 vk_type CharToVKAndModifiers(TCHAR aChar, modLR_type *pModifiersLR, HKL aKeybdLayout, bool aEnableAZFallback = true);
 bool TextToVKandSC(LPCTSTR aText, vk_type &aVK, sc_type &aSC, modLR_type *pModifiersLR = NULL, HKL aKeybdLayout = GetKeyboardLayout(0));
+void AddKeyAlias(LPCTSTR aName, vk_type aVK, sc_type aSC, modLR_type aModifiersLR); // Registers a #Alias mapping.
+key_alias_type *FindKeyAlias(LPCTSTR aName); // Returns the alias with the given (case-insensitive) name, or NULL.
 vk_type TextToSpecial(LPTSTR aText, size_t aTextLength, KeyEventTypes &aEventTypem, modLR_type &aModifiersLR
 	, bool aUpdatePersistent);
 
