@@ -3733,9 +3733,7 @@ inline ResultType Script::IsDirective(LPTSTR aBuf)
 		if (!double_colon)
 			return ScriptError(_T("#Alias requires the form Name::Key."), aBuf);
 		// Determine the alias name (the text before "::", with any surrounding whitespace removed).
-		LPTSTR name_end = double_colon;
-		while (name_end > parameter && IS_SPACE_OR_TAB(name_end[-1]))
-			--name_end;
+		LPTSTR name_end = omit_trailing_whitespace(parameter, double_colon - 1) + 1;
 		size_t name_length = name_end - parameter;
 		LPTSTR target = omit_leading_whitespace(double_colon + 2);
 		if (!name_length || !*target)
